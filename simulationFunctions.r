@@ -138,7 +138,7 @@ makeDataCurved2 <- function(X,bg,nt,justTrt=FALSE){
 }
 
 
-makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x,y=1) x){
+makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x,y) x){
   n <- nrow(X)
 
   linPred <- crossprod(t(X),bg[,'gamma'])
@@ -150,7 +150,7 @@ makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x,y=1) x){
   Z <- rbinom(n,1,ps)
   Yclin <- crossprod(t(X),bg[,'beta']) 
   if(trtCurve) Yclin[Z==1] <- 2*mean(Yclin[Z==1])-Yclin[Z==1]
-  Y <- curveFun(Yclin) + rnorm(n)
+  Y <- curveFun(Yclin,linPred) + rnorm(n)
   data.frame(y=Y,z=Z)
 
 }
