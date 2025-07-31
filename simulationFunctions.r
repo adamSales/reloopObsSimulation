@@ -138,7 +138,7 @@ makeDataCurved2 <- function(X,bg,nt,justTrt=FALSE){
 }
 
 
-makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x) x){
+makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x,y=1) x){
   n <- nrow(X)
 
   linPred <- crossprod(t(X),bg[,'gamma'])
