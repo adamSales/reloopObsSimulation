@@ -38,6 +38,6 @@ if(clustLoad){
 
 
 res <- justPSMjustBad(500, parr=TRUE)
-save(res,file=paste0("output/fullBadResults",Sys.Date(),".RData"))
+save(res,file=paste0("output/curve2Results",Sys.Date(),".RData"))
 
 if(is.element('cl',ls())&inherits(cl,"cluster")) stopCluster(cl)

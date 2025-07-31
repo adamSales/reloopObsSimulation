@@ -96,7 +96,7 @@ coefs <- function(gm,n,p){
 makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
   n <- nrow(X)
    #cat("c")
-  linPred <- X%*%bg[,"gamma"] #crossprod(t(X),bg[,'gamma'])
+  linPred <- X%*%bg[,"gamma"]
    #cat("d")
   cc <- sort(linPred)
   thresh <- sort(cc,decreasing=TRUE)[2*nt]
@@ -114,7 +114,31 @@ makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
   out
 }
 
-makeData <- function(X,bg,nt,trtCurve=FALSE){
+
+makeDataCurved2 <- function(X,bg,nt,justTrt=FALSE){
+  n <- nrow(X)
+   #cat("c")
+  linPred <- rowSums(X[,1:5])
+      #X%*%bg[,"gamma"] #crossprod(t(X),bg[,'gamma'])
+   #cat("d")
+  cc <- sort(linPred)
+  thresh <- sort(cc,decreasing=TRUE)[2*nt]
+  matchedZ <- sample(rep(c(0,1),nt))
+  Z <- rep(0,n)
+  matched <- linPred>=thresh
+  Z[matched] <- matchedZ
+
+  Yclin <- crossprod(t(X),bg[,'beta'])
+  Yclin[matched] <- 2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
+  Y <- Yclin + rnorm(n)
+  out <- data.frame(y=Y,z=Z)
+  attr(out,"matched") <- matched 
+  #cat("e")
+  out
+}
+
+
+makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x) x){
   n <- nrow(X)
 
   linPred <- crossprod(t(X),bg[,'gamma'])
@@ -126,7 +150,7 @@ makeData <- function(X,bg,nt,trtCurve=FALSE){
   Z <- rbinom(n,1,ps)
   Yclin <- crossprod(t(X),bg[,'beta']) 
   if(trtCurve) Yclin[Z==1] <- 2*mean(Yclin[Z==1])-Yclin[Z==1]
-  Y <- Yclin + rnorm(n)
+  Y <- curveFun(Yclin) + rnorm(n)
   data.frame(y=Y,z=Z)
 
 }
@@ -238,13 +262,13 @@ justPSMtrtBad <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),parr=F
     for(d in 1:length(DECAY))
         for(g in 1:length(gm)){
             cat('lambda=',gm[g],' decay=',DECAY[d],'\n')
-            cat('lasso\n')
+            #cat('lasso\n')
             print(Sys.time())
 
             rf <- psmSim(B=B,X=X[[d]],bg=BG[[g]],nt=nt,curved=FALSE,trtCurve=TRUE,parr=parr)
             resultsBadRF[[paste(gm[g],'_',DECAY[d],'_','rf',sep='')]] <- rf
             save(list=c(as.vector(lsf.str(envir=.GlobalEnv)),'X','BG','resultsBadRF','startTime','runSimCurrent','simulationFunctionsCurrent','CALL'),
-                 file=paste0('output/simBadRF',Sys.Date(),'.RData'))
+                 file=paste0('output/simTrtCurve',Sys.Date(),'.RData'))
         }
     list(resultsBadLasso,resultsBadRF)
 }
