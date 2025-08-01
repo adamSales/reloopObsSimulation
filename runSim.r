@@ -36,8 +36,31 @@ if(clustLoad){
     # }
 }
 
+cf1 <- function(x,y){
+    a <- quantile(y,0.025)
+    b <- coef(lm(y~x))[2]
+    x*(y-2*a)/abs(2*a*b)
+}
 
-res <- justPSMjustBad(500, parr=TRUE)
-save(res,file=paste0("output/curve2Results",Sys.Date(),".RData"))
+cf2 <- function(x,y){
+    qq <- quantile(x,0.025)
+    x*(x-2*qq)/abs(2*qq)
+}
+
+cf3 <- function(x,y){
+    q5 <- median(x)
+    q7 <- quantile(x,0.7)
+    (x-q7)^2/(2*(q5-q7))
+}
+
+
+#resCF1 <- justPSMsim(500, curved=FALSE,curveFun=cf1,parr=TRUE)
+#save(resCF1,file=paste0("output/cf1results",Sys.Date(),".RData"))
+
+#resCF2 <- justPSMsim(500, curved=FALSE,curveFun=cf2,parr=TRUE)
+#save(resCF2,file=paste0("output/cf2results",Sys.Date(),".RData"))
+
+resCF3 <- justPSMsim(500,curved=FALSE,curveFun=cf3,parr=TRUE)
+save(resCF3,file=paste0("output/cf3results",Sys.Date(),".RData"))
 
 if(is.element('cl',ls())&inherits(cl,"cluster")) stopCluster(cl)

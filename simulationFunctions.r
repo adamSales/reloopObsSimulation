@@ -1,15 +1,16 @@
 ### estimation functions
+rfRemMod <- function(X,dat,match){
+  remnantMod <- randomForest(x=X[dat$z==0&is.na(match),],y=dat$y[dat$z==0&is.na(match)],
+        xtest=X)
+  remnantMod$test$predicted
+}
 
-
-psmEst <- function(dat,X,pscores,...){ #,SL.library,runmv=FALSE){
+psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE){
 
     match <- PSmatch(dat,pscores)
     est <- matchEst(dat$y,dat$z,match)
    
-    remnantMod <- randomForest(x=X[dat$z==0&is.na(match),],y=dat$y[dat$z==0&is.na(match)],
-        xtest=X)
-
-    prog <- remnantMod$test$predicted
+    prog <- progMod(X,dat,match)
 
     e <- dat$y-prog
 
@@ -138,7 +139,7 @@ makeDataCurved2 <- function(X,bg,nt,justTrt=FALSE){
 }
 
 
-makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x,y) x){
+makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=function(x,y) x){
   n <- nrow(X)
 
   linPred <- crossprod(t(X),bg[,'gamma'])
@@ -158,11 +159,12 @@ makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=\(x,y) x){
 
 justPSM <- function(X,bg,nt,curved,
                     #SL.library,mv=FALSE,
-                    trtCurve=FALSE){
+                    trtCurve=FALSE,
+                    curveFun=\(x,y) x){
     stopifnot(!(curved&trtCurve))
     #cat("a")
     if(curved) dat <- makeDataCurved(X,bg,nt)
-    else dat <- makeData(X,bg,nt,trtCurve = trtCurve)
+    else dat <- makeData(X,bg,nt,trtCurve = trtCurve,curveFun = curveFun)
     #cat("b")
     pmod <- propmodel(dat,X)
     #cat(".")
@@ -175,11 +177,11 @@ justPSM <- function(X,bg,nt,curved,
 ###########################################
 
 
-psmSim <- function(B,X,bg,nt,curved,trtCurve=FALSE,parr=TRUE,...){
+psmSim <- function(B,X,bg,nt,curved,trtCurve=FALSE,curveFun=\(x,y) x, parr=TRUE,...){
     
     simFun <- function(i){ 
             #cat(i," ")
-            justPSM(X=X,bg=bg,nt=nt,curved=curved,trtCurve=trtCurve)
+            justPSM(X=X,bg=bg,nt=nt,curved=curved,trtCurve=trtCurve,curveFun=curveFun)
         }
 
     if(!parr){
@@ -213,7 +215,8 @@ psmSim <- function(B,X,bg,nt,curved,trtCurve=FALSE,parr=TRUE,...){
 }
 
 
-justPSMjustBad <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),parr=FALSE){
+
+justPSMsim <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),curved=TRUE,trtCurve=FALSE,curveFun=\(x,y) x,parr=FALSE){
 
     ## for reproducibility
     startTime <- Sys.time()
@@ -222,12 +225,11 @@ justPSMjustBad <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),parr=
     CALL <- match.call()
 
     #if(!parr) smallsim <- smallsimSer
-    resultsBadLasso <- list()
+    #resultsBadLasso <- list()
     resultsBadRF <- list()
 
     X <- lapply(DECAY,function(decay) makeX(ev=exp(-decay*c(1:p))))
     BG <- coefs(gm,n,p)
-
 
     for(d in 1:length(DECAY))
         for(g in 1:length(gm)){
@@ -235,7 +237,7 @@ justPSMjustBad <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),parr=
             #cat('lasso\n')
             print(Sys.time())
 
-            rf <- psmSim(B=B,X=X[[d]],bg=BG[[g]],nt=nt,curved=TRUE,parr=parr)
+            rf <- psmSim(B=B,X=X[[d]],bg=BG[[g]],nt=nt,curved=curved,trtCurve = trtCurve, curveFun = curveFun,parr=parr)
             resultsBadRF[[paste(gm[g],'_',DECAY[d],'_','rf',sep='')]] <- rf
             save(list=c(as.vector(lsf.str(envir=.GlobalEnv)),'X','BG','resultsBadRF','startTime','runSimCurrent','simulationFunctionsCurrent','CALL'),
                  file=paste0('output/simBadRF',Sys.Date(),'.RData'))
