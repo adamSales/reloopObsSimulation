@@ -9,7 +9,7 @@ psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE
 
     match <- PSmatch(dat,pscores)
     est <- matchEst(dat$y,dat$z,match)
-   
+
     prog <- progMod(X,dat,match)
 
     e <- dat$y-prog
@@ -17,7 +17,7 @@ psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE
     raw <- mean(dat$y[dat$z==1])-mean(dat$y[dat$z==0])
 
     rebar <- matchEst(e,dat$z,match)
-    
+
     reloopOLS <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                         Z=cbind(prog[!is.na(match)]),
                         P=as.numeric(match[!is.na(match)]),
@@ -26,12 +26,12 @@ psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE
                            Z=cbind(prog[!is.na(match)]),
                            P=as.numeric(match[!is.na(match)]),
                            pred=p_ols_v12)
-    
+
     reloopOLSpo <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                            Z=cbind(prog[!is.na(match)]),
                            P=as.numeric(match[!is.na(match)]),
                            pred=p_ols_po)
-    
+
     # reloopOLSplus <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
     #                     Z=cbind(dat$x[!is.na(match),1:5],prog[!is.na(match)]),
     #                     P=as.numeric(match[!is.na(match)]),
@@ -106,9 +106,9 @@ coefs <- function(gm,n,p){
 
 makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
   n <- nrow(X)
-   #cat("c")
+
   linPred <- X%*%bg[,"gamma"]
-   #cat("d")
+
   cc <- sort(linPred)
   thresh <- sort(cc,decreasing=TRUE)[2*nt]
   matchedZ <- sample(rep(c(0,1),nt))
@@ -117,10 +117,11 @@ makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
   Z[matched] <- matchedZ
 
   Yclin <- crossprod(t(X),bg[,'beta'])
-  Yclin[matched] <- 2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
+  Yclin[matched] <- mean(Yclin)-crossprod(t(X),bg[,'beta'])[matched] ## orig version
+      #           2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
   Y <- Yclin + rnorm(n)
   out <- data.frame(y=Y,z=Z)
-  attr(out,"matched") <- matched 
+  attr(out,"matched") <- matched
   #cat("e")
   out
 }
@@ -143,7 +144,7 @@ makeDataCurved2 <- function(X,bg,nt,justTrt=FALSE){
   Yclin[matched] <- 2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
   Y <- Yclin + rnorm(n)
   out <- data.frame(y=Y,z=Z)
-  attr(out,"matched") <- matched 
+  attr(out,"matched") <- matched
   #cat("e")
   out
 }
@@ -159,7 +160,7 @@ makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=function(x,y) x){
   ps <- predict(mmm,type='response')
 
   Z <- rbinom(n,1,ps)
-  Yclin <- crossprod(t(X),bg[,'beta']) 
+  Yclin <- crossprod(t(X),bg[,'beta'])
   if(trtCurve) Yclin[Z==1] <- 2*mean(Yclin[Z==1])-Yclin[Z==1]
   Y <- curveFun(Yclin,linPred) + rnorm(n)
   data.frame(y=Y,z=Z)
@@ -188,8 +189,8 @@ justPSM <- function(X,bg,nt,curved,
 
 
 psmSim <- function(B,X,bg,nt,curved,trtCurve=FALSE,curveFun=\(x,y) x, parr=TRUE,...){
-    
-    simFun <- function(i){ 
+
+    simFun <- function(i){
             #cat(i," ")
             justPSM(X=X,bg=bg,nt=nt,curved=curved,trtCurve=trtCurve,curveFun=curveFun)
         }
