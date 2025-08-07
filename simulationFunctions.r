@@ -1,3 +1,4 @@
+
 ### estimation functions
 rfRemMod <- function(X,dat,match){
   remnantMod <- randomForest(x=X[dat$z==0&is.na(match),],y=dat$y[dat$z==0&is.na(match)],
@@ -17,15 +18,25 @@ psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE
     raw <- mean(dat$y[dat$z==1])-mean(dat$y[dat$z==0])
 
     rebar <- matchEst(e,dat$z,match)
-
+    
     reloopOLS <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                         Z=cbind(prog[!is.na(match)]),
                         P=as.numeric(match[!is.na(match)]),
                         pred=p_ols_interp)
-    reloopOLSplus <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
-                        Z=cbind(dat$x[!is.na(match),1:5],prog[!is.na(match)]),
-                        P=as.numeric(match[!is.na(match)]),
-                        pred=p_ols_interp)
+    reloopOLSv12 <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+                           Z=cbind(prog[!is.na(match)]),
+                           P=as.numeric(match[!is.na(match)]),
+                           pred=p_ols_v12)
+    
+    reloopOLSpo <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+                           Z=cbind(prog[!is.na(match)]),
+                           P=as.numeric(match[!is.na(match)]),
+                           pred=p_ols_po)
+    
+    # reloopOLSplus <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+    #                     Z=cbind(dat$x[!is.na(match),1:5],prog[!is.na(match)]),
+    #                     P=as.numeric(match[!is.na(match)]),
+    #                     pred=p_ols_interp)
     reloopRF <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                         Z=cbind(dat$x[!is.na(match),1:5],prog[!is.na(match)]),
                         P=as.numeric(match[!is.na(match)]),
@@ -114,7 +125,6 @@ makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
   #cat("e")
   out
 }
-
 
 
 
