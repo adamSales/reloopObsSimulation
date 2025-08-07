@@ -14,8 +14,16 @@ oneRun <- function(s,...){
 }
 
 
+addConds <- function(res)
+    sapply(names(res),function(nn){ out <- res[[nn]]; attr(out,"name") <- nn; out},
+           simplify=FALSE)
+
+
 reformRun <- function(run){
 
+    if(!is.null(attr(run,"name"))){
+        conds <- strsplit(attr(run,"name"),"_")[[1]]
+    }
                                         # colnames(run) <- fixNames(colnames(run))
     SD <- if('SD'%in%colnames(run)) run[,'SD'] else run[,ncol(run)]
     colnames(run) <- tolower(colnames(run))
@@ -26,7 +34,7 @@ reformRun <- function(run){
     colnames(run)[which(colnames(run)=='reloopols')] <- 'psm.reloop'
     colnames(run)[which(colnames(run)=='reloopolsplus')] <- 'psm.reloopPlusOLS'
     colnames(run)[which(colnames(run)=='relooprf')] <- 'psm.reloopPlusRF'
-
+    colnames(run)[which(colnames(run)=="raw")] <- "diffinmeans"
 
 
     methods <- c('diffinmeans','psm','psm.rebar',
@@ -34,12 +42,37 @@ reformRun <- function(run){
                  'cem','cem.adj','cem.adj.rebar','psmml','psmml.rebar','psm.reloop',
                  'psm.reloopPlusOLS','psm.reloopPlusRF')
     run <- run[,colnames(run)%in%methods]
+
+    cormat <- cor(run)
+    cormat[upper.tri(cormat,TRUE)] <- 0
+    run <- run[,apply(cormat,1,max,na.rm=TRUE)<0.9999]
+
     for(cc in 1:ncol(run)) run[,cc] <- run[,cc]/SD
     tot <- data.frame(est=do.call('c',as.data.frame(run)),
                       method=rep(colnames(run),each=nrow(run)))
+    if(exists("conds")){
+        tot$gm <- conds[1]
+        tot$decay <- conds[2]
+    }
 
     tot
 }
+
+newCurvedPlot <- function(res){
+    st <- reformAll(res)
+    ggplot(st,aes(method,est))+geom_point()+geom_violin(draw_quantiles=c(0.5))+
+        geom_hline(yintercept=0,linetype="dotted")+
+        facet_grid(gm~decay,labeller=labeller(
+                                gm=setNames(paste('Unmatched\n Confounding:\n',
+                                                  c('None','High')),c('0','0.5')),
+                                decay=setNames(c("ML is hard","ML is easy"),c("0","0.05"))))+
+        theme(axis.text.x = element_text(angle = 90))
+
+    }
+
+
+reformAll <- function(res)
+   res|> addConds() |> lapply(reformRun)|>do.call("rbind",args=_)
 
 makeNum <- function(run){
     as.data.frame(
@@ -62,16 +95,20 @@ fixNames <- function(nm){
 
 plotBadGG <- function(stLasso,stRF){#,sdYc){
 
-    nsim <- nrow(stLasso[[1]])
-    ncond <- length(stLasso)
+    nsim <- nrow(stRF[[1]])
+    ncond <- length(stRF)
 
-    stTot <- as.data.frame(rbind(do.call('rbind',stLasso),
-                   do.call('rbind',stRF)),row.names=seq(2*nsim*ncond))#[,-which(colnames(stRF[[1]])=='MV')]))
+    stTot <- as.data.frame(
+        #$rbind(
+           # do.call('rbind',stLasso),
+            do.call('rbind',stRF),
+        #),
+        row.names=seq(2*nsim*ncond))#[,-which(colnames(stRF[[1]])=='MV')]))
 
-    stTot$adjMeth <- c(rep('Lasso',nsim*ncond),rep('RF',nsim*ncond))
+    #stTot$adjMeth <- c(rep('Lasso',nsim*ncond),rep('RF',nsim*ncond))
 
     rfCond <- strsplit(names(stRF),'_')
-    lasCond <- strsplit(names(stLasso),'_')
+    #lasCond <- strsplit(names(stLasso),'_')
     stTot$rho <- c(rep(vapply(lasCond,function(x) x[2],'a'),each=nsim),
                    rep(vapply(rfCond,function(x) x[2],'a'),each=nsim))
     stTot$kappa <- c(rep(vapply(lasCond,function(x) x[1],'a'),each=nsim),
