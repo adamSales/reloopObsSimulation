@@ -1,7 +1,9 @@
 source ('simulationFunctions.r')
 
-#packs <- c("MASS","optmatch","SuperLearner","mvtnorm","parallel","randomForest","glmnet","tmle","doMC")
-#install.packages(setdiff(packs,installed.packages()),repos="https://mirror.its.umich.edu/cran" )
+packs <- c("MASS","optmatch","SuperLearner","snow","mvtnorm","remotes","parallel","randomForest","glmnet","tmle","doMC")
+install.packages(setdiff(packs,installed.packages()),repos="https://cran.rstudio.com/")
+
+if(!require("dRCT")) remotes::install_github("manncz/dRCT")
 
 library(MASS)
 library(optmatch)
@@ -53,12 +55,18 @@ cf3 <- function(x,y){
     (x-q7)^2/(2*(q5-q7))
 }
 
+resLinear <- justPSMsim(500,curved=FALSE,curveFun=\(x,y) x,parr=TRUE)
+save(list=ls(),file=paste0("output/linearResults",Sys.Date(),".RData"))
 
-#resCF1 <- justPSMsim(500, curved=FALSE,curveFun=cf1,parr=TRUE)
-#save(resCF1,file=paste0("output/cf1results",Sys.Date(),".RData"))
+resCurved <- justPSMsim(500,curved = TRUE,parr=TRUE)
+save(list=setdiff(ls(),"resLinear"),
+   file=paste0("output/curvedResults",Sys.Date(),".RData"))
 
-#resCF2 <- justPSMsim(500, curved=FALSE,curveFun=cf2,parr=TRUE)
-#save(resCF2,file=paste0("output/cf2results",Sys.Date(),".RData"))
+resCF1 <- justPSMsim(500, curved=FALSE,curveFun=cf1,parr=TRUE)
+save(resCF1,file=paste0("output/cf1results",Sys.Date(),".RData"))
+
+resCF2 <- justPSMsim(500, curved=FALSE,curveFun=cf2,parr=TRUE)
+save(resCF2,file=paste0("output/cf2results",Sys.Date(),".RData"))
 
 resCF3 <- justPSMsim(500,curved=FALSE,curveFun=cf3,parr=TRUE)
 save(resCF3,file=paste0("output/cf3results",Sys.Date(),".RData"))

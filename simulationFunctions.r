@@ -116,27 +116,6 @@ makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
 }
 
 
-makeDataCurved2 <- function(X,bg,nt,justTrt=FALSE){
-  n <- nrow(X)
-   #cat("c")
-  linPred <- rowSums(X[,1:5])
-      #X%*%bg[,"gamma"] #crossprod(t(X),bg[,'gamma'])
-   #cat("d")
-  cc <- sort(linPred)
-  thresh <- sort(cc,decreasing=TRUE)[2*nt]
-  matchedZ <- sample(rep(c(0,1),nt))
-  Z <- rep(0,n)
-  matched <- linPred>=thresh
-  Z[matched] <- matchedZ
-
-  Yclin <- crossprod(t(X),bg[,'beta'])
-  Yclin[matched] <- 2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
-  Y <- Yclin + rnorm(n)
-  out <- data.frame(y=Y,z=Z)
-  attr(out,"matched") <- matched 
-  #cat("e")
-  out
-}
 
 
 makeData <- function(X,bg,nt,trtCurve=FALSE,curveFun=function(x,y) x){
@@ -240,7 +219,7 @@ justPSMsim <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),curved=TR
             rf <- psmSim(B=B,X=X[[d]],bg=BG[[g]],nt=nt,curved=curved,trtCurve = trtCurve, curveFun = curveFun,parr=parr)
             resultsBadRF[[paste(gm[g],'_',DECAY[d],'_','rf',sep='')]] <- rf
             save(list=c(as.vector(lsf.str(envir=.GlobalEnv)),'X','BG','resultsBadRF','startTime','runSimCurrent','simulationFunctionsCurrent','CALL'),
-                 file=paste0('output/simBadRF',Sys.Date(),'.RData'))
+                 file=paste0('output/simresults',Sys.time(),'.RData'))
         }
     resultsBadRF
 }
