@@ -40,7 +40,9 @@ reformRun <- function(run){
     methods <- c('diffinmeans','psm','psm.rebar',
                  'nn','nn.adj','nn.adj.rebar',
                  'cem','cem.adj','cem.adj.rebar','psmml','psmml.rebar','psm.reloop',
-                 'psm.reloopPlusOLS','psm.reloopPlusRF')
+                 'psm.reloopPlusOLS','psm.reloopPlusRF',
+                 grep("loop|psm|raw|rebar",colnames(run),value = TRUE))
+                 
     run <- run[,colnames(run)%in%methods]
 
     cormat <- cor(run)
