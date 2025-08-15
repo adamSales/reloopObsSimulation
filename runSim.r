@@ -30,7 +30,7 @@ if(clustLoad){
         library(doSNOW)
         cl <- makeCluster(numClus)
         registerDoSNOW(cl)
-        clusterEvalQ(cl,source ('simulationFunctions.r'))
+        clusterEvalQ(cl,source('simulationFunctions.r'))
 
     } # else{
     #     library(doMC)
@@ -71,4 +71,4 @@ save(resCF2,file=paste0("output/cf2results",Sys.Date(),".RData"))
 resCF3 <- justPSMsim(500,curved=FALSE,curveFun=cf3,parr=TRUE)
 save(resCF3,file=paste0("output/cf3results",Sys.Date(),".RData"))
 
-if(is.element('cl',ls())&inherits(cl,"cluster")) stopCluster(cl)
+stopCluster(cl)

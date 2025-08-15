@@ -3,32 +3,37 @@
 rfRemMod <- function(X,dat,match){
   remnantMod <- randomForest(x=X[dat$z==0&is.na(match),],y=dat$y[dat$z==0&is.na(match)],
         xtest=X)
-  remnantMod$test$predicted
+  out <- remnantMod$test$predicted
+  attr(out,"R2") <- remnantMod$rsq[length(remnantMod$rsq)]
+  out
 }
 
 psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE){
 
     match <- PSmatch(dat,pscores)
-    est <- matchEst(dat$y,dat$z,match)
    
     prog <- progMod(X,dat,match)
 
     e <- dat$y-prog
 
-    raw <- mean(dat$y[dat$z==1])-mean(dat$y[dat$z==0])
+    out <- list()
+    out <- within(out,{
+      raw <- mean(dat$y[dat$z==1])-mean(dat$y[dat$z==0])
 
-    rebar <- matchEst(e,dat$z,match)
-    
-    reloopOLS <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+      psm <- matchEst(dat$y,dat$z,match)
+
+      psm.rebar <- matchEst(e,dat$z,match)
+
+      reloopOLS <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                         Z=cbind(prog[!is.na(match)]),
                         P=as.numeric(match[!is.na(match)]),
                         pred=p_ols_interp)
-    reloopOLSv12 <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+      reloopOLSv12 <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                            Z=cbind(prog[!is.na(match)]),
                            P=as.numeric(match[!is.na(match)]),
                            pred=p_ols_v12)
     
-    reloopOLSpo <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+      reloopOLSpo <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                            Z=cbind(prog[!is.na(match)]),
                            P=as.numeric(match[!is.na(match)]),
                            pred=p_ols_po)
@@ -37,21 +42,25 @@ psmEst <- function(dat,X,pscores,progMod=rfRemMod,...){ #,SL.library,runmv=FALSE
     #                     Z=cbind(dat$x[!is.na(match),1:5],prog[!is.na(match)]),
     #                     P=as.numeric(match[!is.na(match)]),
     #                     pred=p_ols_interp)
-    reloopRF <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+      reloopRF <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
                         Z=cbind(dat$x[!is.na(match),1:5],prog[!is.na(match)]),
                         P=as.numeric(match[!is.na(match)]),
                         pred=p_rf_interp)
 
+    })
 
-    mv <- NA
+    out <- vapply(out,\(x) unname(x)[1],1.0)
+    out["mv"] <- NA
     #if(runmv) mv <- MV(dat,X,match,pscores,SL.library)
-    R2 <- 0 #rf$rsq[length(rf$rsq)] #1-min(progMod$cvRisk)/var(dat$y[is.na(match)])
+    out["R2"] <- attr(prog,"R2")
+    out["sdY"] <- sd(dat$y)
 
-    setNames(c(raw,est,rebar,
-              reloopOLS[1],
-              reloopOLSplus[1],
-              reloopRF[1],sd(dat$y),
-              mv,R2), c("raw",'psm','psm.rebar','reloopOLS','reloopOLSplus','reloopRF',"sdY",'MV','R2'))
+    # setNames(c(raw,est,rebar,
+    #           reloopOLS[1],
+    #           reloopOLSplus[1],
+    #           reloopRF[1],sd(dat$y),
+    #           mv,R2), c("raw",'psm','psm.rebar','reloopOLS',"sdY",'MV','R2'))
+    out
 }
 
 PSmatch <- function(dat,pscores){
@@ -118,7 +127,8 @@ makeDataCurved <- function(X,bg,nt,justTrt=FALSE){
   Z[matched] <- matchedZ
 
   Yclin <- crossprod(t(X),bg[,'beta'])
-  Yclin[matched] <- 2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
+  Yclin[matched] <- mean(Yclin)-crossprod(t(X),bg[,'beta'])[matched] ## orig version
+    #2*mean(Yclin[matched])-Yclin[matched]#crossprod(t(X),bg[,'beta'])[matched]
   Y <- Yclin + rnorm(n)
   out <- data.frame(y=Y,z=Z)
   attr(out,"matched") <- matched 
@@ -205,7 +215,7 @@ psmSim <- function(B,X,bg,nt,curved,trtCurve=FALSE,curveFun=\(x,y) x, parr=TRUE,
 
 
 
-justPSMsim <- function(B,n=400,p=600,nt=50,gm=c(0,0.5),DECAY=c(0,0.05),curved=TRUE,trtCurve=FALSE,curveFun=\(x,y) x,parr=FALSE){
+justPSMsim <- function(B,n=400,p=600,nt=50,gm=c(0.5),DECAY=c(0.05),curved=TRUE,trtCurve=FALSE,curveFun=\(x,y) x,parr=FALSE){
 
     ## for reproducibility
     startTime <- Sys.time()
