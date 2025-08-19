@@ -1,0 +1,389 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{bm}
+
+\title{Breaking ReLOOP}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+\section{Setup for One Worked Example}
+<<cache=TRUE>>=
+library(tidyverse)
+library(mvtnorm)
+library(optmatch)
+library(randomForest)
+library(dRCT)
+
+source("simulationFunctions.r")
+source("displaySim.r")
+
+## parameters
+n <- 400 # total sample size
+p <- 600 # number of covariates
+nt <- 50 # number of treated subjects
+decay <- 0.05 
+
+## make the dataset
+set.seed(613)
+X <- makeX(ev=exp(-decay*c(1:p)))
+bg <- coefs(0.5,n,p)[[1]]
+dat <- makeDataCurved(X,bg,nt)
+
+## propensity score matching
+pmod <- propmodel(dat,X) # propensity score model
+pscores <- pmod$linear
+match <- PSmatch(dat,pscores)
+
+## prognostic scores, aka \hat{y}^{rem}
+prog <- rfRemMod(X,dat,match) 
+
+## matched data (discard remnant)
+matched <- cbind(dat,prog=prog,match=match)[!is.na(match),]
+matched <- within(matched,progC <- prog-mean(prog))
+head(matched)
+
+## data with one row per match:
+paired <- matched%>%
+  group_by(match)%>%
+  summarise(
+    deltaY=y[z==1]-y[z==0],
+    meanX=mean(prog),
+    meanXC=mean(progC),
+    deltaX=prog[z==1]-prog[z==0]
+    )
+head(paired)
+@
+
+Basic estimators:
+
+$\hat{\tau}_{SD}=\bar{W}=\overline{\Delta Y}$:\\
+
+<<>>=
+print(tauhatSD <- mean(paired$deltaY))
+## compare:
+print(matchEst(dat$y,dat$z,match))
+@
+
+$\hat{\tau}_{rebar}=\overline{\Delta Y}-\overline{\Delta X}$
+
+<<>>=
+print(tauhatRebar <- mean(paired$deltaY)-mean(paired$deltaX))
+@
+
+\section{Simple forms for the \texttt{p\_loop} estimator}
+
+To keep things simple, I'm:
+ 
+\begin{itemize}
+ \item dropping the $i$ subscript and considering an individual pair.
+ \item assuming there's no treatment effect, so $t_1=c_1=Y_1$ and $t_2=c_2=Y_2$
+ \item assuming $T=1$, so the subject with subscript 1  is treated
+\end{itemize}
+
+From the paper, we have:
+$$ \hat{\tau}_{SD}=W=T(t_1-c2)+(1-T)(t_2-c_1)\equiv Y_1-Y_2$$
+$$ \hat{\tau}_{rebar}=Y_1-Y_2-(X_1-X_2)$$
+and
+$$ \hat{\tau}= W-\hat{d}=Y_1-Y_2-\hat{d}$$
+
+
+\subsection{Imputing Potential Outcomes}
+If we estimate $\hat{d}$ by imputing potential outcomes, 
+$$\hat{d}=\frac{\hat{t}_1+\hat{c}_1-\hat{t}_2-\hat{c}_2}{2}$$
+To impute the potential outcomes, we fit a model:
+\begin{equation}\label{eq:po-model}
+Y_i=\beta_0+\beta_1Z_i+\beta_2 X_i+\beta_3 Z_iX_i+\epsilon_i
+\end{equation} 
+where:
+\begin{itemize}
+ \item $Y$ is the outcome
+ \item $Z$ is treatment assignment 
+ \item $X$ is the prediction from the remnant, i.e. $\hat{y}^{rem}$, aka prognostic score
+\end{itemize}
+Then:
+\begin{align*}
+\hat{c}_i&=\hat{\beta}_0+\hat{\beta}_2X_i\\
+\hat{t}_i&=\hat{\beta}_0+\hat{\beta}_1+(\hat{\beta}_2+\hat{\beta}_3)X_i
+\end{align*}
+
+and 
+\begin{align*}
+\hat{d}&=\frac{1}{2}\left(\hat{t}_1-\hat{t}_2+\hat{c}_1-\hat{c}_2\right)\\
+&=\frac{1}{2}\left[(\hat{\beta}_2+\hat{\beta}_3)(X_1-X_2)+\hat{\beta}_2(X_1-X_2)\right]\\
+&=(\hat{\beta}_2+\hat{\beta}_3/2)(X_1-X_2)\\
+&=\tilde{\beta}\Delta X
+\end{align*}
+where $\tilde{\beta}=(\hat{\beta}_2+\hat{\beta}_3/2)$ and $\Delta X=X_1-X_2$.
+
+\subsubsection{An Example Computation}
+<<fig=TRUE>>=
+print(matched%>%
+        ggplot(aes(prog,y,color=factor(z)))+
+        geom_point()+
+        geom_smooth(method="lm",se=FALSE)
+      )
+
+## estimating OLS models leaving out each pair
+### estimated coefficients: 
+betas <- matrix(nrow=50,ncol=4,dimnames=list(levels(matched$match),names(coef(lm(y~z*prog,data=matched)))))
+### dhat=(beta_2+beta_3/2)delta X and W=delta Y:
+dhatW <- matrix(nrow=50,ncol=2,dimnames=list(levels(matched$match),c("d","W")))
+
+for(m in levels(matched$match)){
+    mod <- lm(y~z*progC,data=matched,subset=match!=m)
+    betas[m,] <- cc <- unname(coef(mod))
+    dhatW[m,] <- with(subset(paired,match==m), 
+                      c(d=(cc[3]+cc[4]/2)*deltaX,W=deltaY))
+}
+@
+ReLOOP estimator:
+<<>>=
+print(tauhat <- mean(dhatW[,"W"]-dhatW[,"d"]))
+@
+Compare:
+<<>>=
+reloopOLSpo <- p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+                           Z=cbind(prog[!is.na(match)]),
+                           P=as.numeric(match[!is.na(match)]),
+                           pred=p_ols_po)
+print(reloopOLSpo)
+@
+
+\subsubsection{Poor Man's ReLOOP (impute potential outcomes version)}
+Instead of doing leave-one-out, just fit one big model \eqref{eq:po-model}.
+
+Center the prognostic scores so that $\bar{X}=0$.
+
+Then:
+\begin{align*}
+\bar{Y}_1&=\hat{\beta}_0+\hat{\beta}_1+(\hat{\beta}_2+\hat{\beta}_3)\bar{X}_{Z=1}\\
+\bar{Y}_2&=\hat{\beta}_0+\hat{\beta}_2\bar{X}_{Z=0}\\
+\bar{d}&=(\hat{\beta}_2+\hat{\beta}_3/2)(\bar{X}_{Z=1}-\bar{X}_{Z=0})
+\end{align*}
+
+So:
+\begin{align*}
+\hat{tau}_{poor}&=\bar{Y_1}-\bar{Y_2}-\bar{d}\\
+&=\begin{split}
+&\hat{\beta}_1+\hat{\beta}_2(\bar{X}_{Z=1}-\bar{X}_{Z=0})+\hat\beta_3\bar{X}_{Z=1}\\
+-&\hat{\beta}_2(\bar{X}_{Z=1}-\bar{X}_{Z=0})-\hat\beta_3/2(\bar{X}_{Z=1}-\bar{X}_{Z=0})
+\end{split}\\
+&=\hat{\beta}_1+\hat\beta_3/2(\bar{X}_{Z=1}+\bar{X}_{Z=0})\\
+&=\hat{\beta}_1+\hat\beta_3 \bar{X}\\
+&=\hat{\beta}_1
+\end{align*}
+
+To wit:
+<<>>=
+poormod <- lm(y~z*progC,data=matched)
+@
+Explicit calculation:
+<<>>=
+poorCoef <- coef(poormod)
+dhat <- (poorCoef[3]+poorCoef[4]/2)*paired$deltaX
+
+#Estimate:
+mean(paired$deltaY)-mean(dhat)
+@
+Or just:
+<<>>=
+poorCoef[2]
+@
+
+We can also compare the estimated coefficients from the global OLS (vertical lines) to those from the leave-one-out models (histograms):
+<<fig=TRUE>>=
+par(mfrow=c(2,2))
+for(i in 1:4){
+    hist(betas[,i],main=colnames(betas)[i])
+    abline(v=poorCoef[i])
+}
+par(mfrow=c(1,1))
+@
+
+\subsection{Imputing $a$ and $b$}
+The other approach to imputing $\hat{d}$ is to impute $a=t_1-c_2$ and $b=t_2-c_1$ directly.
+Then
+$$\hat{d}=\frac{\hat{a}-\hat{b}}{2}$$
+
+Let
+$$\Delta Y=Y_1-Y_2$$
+Then we fit the OLS model:
+\begin{equation}\label{eq:imputeab}
+\Delta Y_i=\gamma_0+\gamma_1\Delta X_i+\gamma_2 \frac{X_{i1}+X_{i2}}{2}+\epsilon_i
+\end{equation}
+
+Given estimated coefficients from \eqref{eq:imputeab},
+\begin{align*}
+\hat{a}&=\hat{\gamma}_0+\hat{\gamma}_1\Delta X+\hat{\gamma}_2\frac{X_{1}+X_{2}}{2}\\
+\hat{b}&=\hat{\gamma}_0-\hat{\gamma}_1\Delta X+\hat{\gamma}_2\frac{X_{1}+X_{2}}{2}
+\end{align*}
+since with $a$ the first one is treated (as in the assumed setup) and with $b$ the 2nd one is treated so $X_1$ and $X_2$ are switched---hence the negative sign before $\Delta X$. 
+Then
+\begin{equation*}
+\hat{d}=\frac{\hat{a}-\hat{b}}{2}=\hat{\gamma}_2\Delta X
+\end{equation*}
+
+\subsubsection{An Example Computation}
+
+<<fig=TRUE>>=
+par(mfrow=c(1,2))
+with(paired,plot(deltaX,deltaY))
+with(paired,plot(meanX,deltaY))
+@
+
+By hand:
+<<>>=
+gammas <- t(sapply(1:nrow(paired),\(i) coef(lm(deltaY~meanX+deltaX,data=paired[-i,]))))
+
+dhat <- gammas[,"deltaX"]*paired$deltaX
+
+tauhats <- paired$deltaY-dhat
+mean(tauhats)
+@
+Compare:
+<<>>=
+p_loop(Y=dat$y[!is.na(match)],Tr=dat$z[!is.na(match)],
+                           Z=cbind(prog[!is.na(match)]),
+                           P=as.numeric(match[!is.na(match)]),
+       pred=p_ols_v12)
+@
+
+\subsubsection{Poor Man's Version}
+Assume, as before, that $\bar{X}=0$. 
+
+One could approximate the LOOP estimator by fitting one global model:
+\begin{equation}
+\Delta Y=\gamma_0+\gamma_1\Delta X+\gamma_2\frac{X_1+X_2}{2}+\epsilon
+\end{equation}
+Then 
+$$\hat{\tau}\approx \overline{\Delta Y}-\hat{\gamma}_1\overline{\Delta X}=\hat{\gamma}_0$$
+since $\overline{X_1+X_2}=0$.
+
+It turns out (by a FWL argument left as an exercise for the reader) that this is equivalent to fitting the model 
+\begin{equation*}
+Y_i=\alpha_{0m[i]}+\alpha_1Z_i+\alpha_2X_i+\alpha_3Z_iX_i+\epsilon_i
+\end{equation*}
+Where $\alpha_{0m[i]}$ are fixed effects for the pair, with $\tau_{poor}=\hat{\alpha}_1$.
+
+Just look:
+<<>>=
+## model with deltas:
+coef(lm(deltaY~deltaX+meanXC,data=paired))[1]
+
+## model with fixed effects
+coef(lm(y~match+z*progC,data=matched))['z']
+@
+
+
+\section{When is $\hat{\tau}$ less biased than $\hat{\tau}_{SD}$?}
+
+To make things simpler, rather than talk about bias we'll just talk about error with a fixed dataset. The bias argument follows in a straightforward way. 
+
+Since there is no treatment effect, $\hat{\tau}=error(\hat{\tau})$. So essentially, the question is, under what conditions does this hold:
+\begin{equation}\label{compareBias}
+|\hat{\tau}_{SD}|>|\hat{\tau}|
+\end{equation}
+
+
+Recall: $\hat{d}=\tilde{\beta}\Delta X$ or $\hat{\gamma}_2\Delta X$ depending on whether we're imputing potential outcomes or $a$ and $b$.
+To be generic, let's just say $\hat{d}=\delta \Delta X$.
+Then:
+\begin{align*}
+\hat{\tau}_{SD}&=\overline{\Delta Y}\\
+\hat{\tau}&=\overline{\Delta Y}-\overline{\delta \Delta X}
+\end{align*}
+
+So \eqref{eq:compareBias} becomes
+\begin{equation}\label{eq:compareBias2}
+|\overline{\Delta Y}|>|\overline{\Delta Y}-\overline{\delta \Delta X}|
+\end{equation}
+
+Now some high-school algebra:\\
+If $\overline{\Delta Y}>0$, \eqref{eq:compareBias2} is equivalent to
+$$ 0<\overline{\delta \Delta X} < 2 \overline{\Delta Y}$$
+If $\overline{\Delta Y}<0$, \eqref{eq:compareBias2} is equivalent to
+$$ 0>\overline{\delta \Delta X} > 2 \overline{\Delta Y}$$
+
+Alternatively, 
+\begin{equation}\label{eq:condition}
+0<\frac{\overline{\delta \Delta X}}{\overline{\Delta Y}}<2
+\end{equation}
+(assuming $\overline{\Delta Y}\ne 0$; otherwise \eqref{eq:compareBias} is impossible.)
+
+As $n\rightarrow \infty$, leave-one-out becomes less important (under suitable regularity conditions)
+so for intuition we can imagine that there's just one $\delta$ (i.e. the "poor man's" version) and write \eqref{eq:condition} as 
+\begin{equation}\label{eq:condition2}
+0<\delta\frac{\overline{\Delta X}}{\overline{\Delta Y}}<2
+\end{equation}
+
+\section{Breaking ReLOOP}
+The first inequality of \eqref{eq:condition2} implies that the sign of $\frac{\overline{\Delta X}}{\overline{\Delta Y}}$ matches the sign of $\delta$. 
+So, for instance, if $\Delta X$ tends to be positive and $\Delta Y$ tends to be negative (i.e. prognostic scores tend to be higher treatment than control but outcomes tend to be lower) or vice-versa then $\delta$ must be negative.
+So to find a case where ReLOOP hurts things, we need to construct a dataset where that's not the case.
+
+Here's one:
+<<fig=TRUE>>=
+set.seed(613)
+bad <- data.frame(
+    m=letters, # a match
+    y0=rnorm(26),
+    x0=rnorm(26))
+bad <- within(bad,{
+    y1 <- y0-(1:26)/10 #y1<y0, differences grow
+    x1 <- x0+(26:1)/10+rnorm(26,sd=0.1) #x1>x0, differences shrink
+}
+)
+
+bad <- within(bad,{
+    ydiff <- y1-y0
+    xdiff <- x1-x0
+    xmean <- (x1+x0)/2
+})
+
+## plot x vs y and delta x vs delta y
+par(mfrow=c(1,2))
+with(bad,plot(c(x0,x1),c(y0,y1),type="n"))
+text(bad$x1,bad$y1,bad$m,col="blue",xlim=c(.5,11.5),ylim=c(.5,8))
+text(bad$x0,bad$y0,bad$m,col="red")
+
+with(bad,plot(xdiff,ydiff))
+
+
+## in "long form"
+badLong <- rbind(
+    with(bad, data.frame(y=y0,x=x0,z=0,m=m)),
+    with(bad, data.frame(y=y1,x=x1,z=1,m=m))
+)
+@
+
+Results:
+
+Simple difference:
+<<>>=
+mean(bad$ydiff)
+@
+
+Reloop:
+<<>>=
+with(badLong,p_loop(Y=y,Tr=z,Z=cbind(x),P=as.numeric(as.factor(m)),pred=p_ols_po))
+with(badLong,p_loop(Y=y,Tr=z,Z=cbind(x),P=as.numeric(as.factor(m)),pred=p_ols_v12))
+with(badLong,p_loop(Y=y,Tr=z,Z=cbind(x),P=as.numeric(as.factor(m)),pred=p_ols_interp))
+@
+
+Rebar:
+<<>>=
+mean(bad$ydiff-bad$xdiff)
+@
+
+OK but that was constructed to be bad. What if we constructed a new match based
+on the prognostic scores? (this is backwards but still)
+
+<<>>=
+newmatch <- pairmatch(match_on(z~x,data=badLong),data=badLong)
+
+with(badLong,p_loop(Y=y,Tr=z,Z=cbind(x),P=as.numeric(as.factor(newmatch)),pred=p_ols_interp))
+@
+Still worse
+
+\end{document}
