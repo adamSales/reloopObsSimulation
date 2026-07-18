@@ -710,9 +710,9 @@ sim_results <- lapply(
 
 sim_results <- do.call(rbind, sim_results)
 
-#dir.create("results_next", showWarnings = FALSE, recursive = TRUE)
+#dir.create("results", showWarnings = FALSE, recursive = TRUE)
 
-out_file <- sprintf("results/next/sim_results_task_%03d.rds", task_id)
+out_file <- sprintf("results/sim_results_task_%03d.rds", task_id)
 saveRDS(sim_results, file = out_file)
 
 cat("Saved:", out_file, "\n")
