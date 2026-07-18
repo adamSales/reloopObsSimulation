@@ -15,6 +15,6 @@ module purge
 module load r
 
 mkdir -p logs
-mkdir -p results/next
+mkdir -p results
 
 Rscript /home/ypei/obsReLOOP/yhatRF.R $SLURM_ARRAY_TASK_ID 50
