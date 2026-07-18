@@ -17,4 +17,4 @@ module load r
 mkdir -p logs
 mkdir -p results/next
 
-Rscript /home/ypei/obsReLOOP/nextSim.R $SLURM_ARRAY_TASK_ID 50
+Rscript /home/ypei/obsReLOOP/yhatRF.R $SLURM_ARRAY_TASK_ID 50
