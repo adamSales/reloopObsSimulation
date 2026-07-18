@@ -5,7 +5,7 @@ setwd("/home/ypei/obsReLOOP")
 
 # read and combine task results
 files <- list.files(
-  "results/next",
+  "results",
   pattern = "^sim_results_task_.*\\.rds$",
   full.names = TRUE
 )
@@ -21,5 +21,5 @@ sim_results <- sim_results[order(
   sim_results$matching_quality
 ), ]
 
-saveRDS(sim_results, file = "results/next/sim_results_all500y0hat.rds")
-write.csv(sim_results, file = "results/next/sim_results_all500y0hat.csv", row.names = FALSE)
+saveRDS(sim_results, file = "results/sim_results_all500y0hat.rds")
+write.csv(sim_results, file = "results/sim_results_all500y0hat.csv", row.names = FALSE)
